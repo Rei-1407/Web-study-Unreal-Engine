@@ -1,0 +1,21 @@
+{
+  "name": "web-study-unreal-engine",
+  "version": "1.0.0",
+  "description": "Trang web học Unreal Engine 5.6 (nội bộ) — sinh từ tài liệu tham chiếu chuẩn.",
+  "scripts": {
+    "build": "node scripts/build-content.mjs",
+    "dev": "node scripts/build-content.mjs && python -m http.server 5173",
+    "serve": "python -m http.server 5173"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rei-1407/Web-study-Unreal-Engine.git"
+  },
+  "keywords": ["unreal-engine", "study", "learning"],
+  "author": "Rei",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "marked": "^12.0.2"
+  }
+}
