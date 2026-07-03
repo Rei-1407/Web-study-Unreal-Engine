@@ -4,7 +4,6 @@
   "description": "Trang web học Unreal Engine 5.6 (nội bộ) — sinh từ tài liệu tham chiếu chuẩn.",
   "scripts": {
     "build": "node scripts/build-content.mjs",
-    "build:pages": "node scripts/build-content.mjs && node scripts/assemble.mjs",
     "dev": "node scripts/build-content.mjs && python -m http.server 5173",
     "serve": "python -m http.server 5173"
   },
