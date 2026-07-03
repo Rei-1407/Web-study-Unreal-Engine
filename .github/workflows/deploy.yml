@@ -14,6 +14,9 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# Deploy tĩnh: dùng thẳng assets/data/content.js đã commit sẵn.
+# Tài liệu Markdown gốc KHÔNG nằm trong repo, nên không build lại ở đây —
+# muốn đổi nội dung thì chạy `npm run build` ở máy rồi commit content.js.
 jobs:
   deploy:
     environment:
@@ -24,23 +27,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install deps
-        run: npm ci
-
-      - name: Build nội dung từ Markdown
-        run: npm run build
-
       - name: Gom file tĩnh vào _site
         run: |
           mkdir -p _site
           cp index.html _site/
           cp -r assets _site/
-          # Cố ý KHÔNG publish file .md gốc — tránh cho tải trực tiếp tài liệu nguồn.
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

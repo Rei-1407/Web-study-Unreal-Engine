@@ -31,28 +31,33 @@ cách dùng Unreal Engine.
 ## Cấu trúc dự án
 
 ```
-Unreal_Engine_5_6_..._v2.md      ← Tài liệu gốc (nguồn sự thật duy nhất)
-scripts/build-content.mjs        ← Sinh nội dung bài học từ Markdown
+(Unreal_Engine_5_6_..._v2.md)    ← Tài liệu gốc — GIỮ RIÊNG TRÊN MÁY, không đưa lên repo
+scripts/build-content.mjs        ← Sinh nội dung bài học từ Markdown (chạy ở máy)
 assets/
   css/style.css                  ← Giao diện
   js/app.js                      ← Toàn bộ logic (router, tiến độ, gamification)
-  data/content.js                ← TỰ SINH từ tài liệu (đừng sửa tay)
+  data/content.js                ← Nội dung bài học (sinh từ tài liệu; commit sẵn)
   data/learning.js               ← Bài tập, quiz, lộ trình (viết tay)
 index.html                       ← Trang chính
 ```
+
+> Tài liệu Markdown gốc **cố ý không nằm trong repo** (để không ai tải/clone bản
+> gốc). Nội dung web nằm trong `assets/data/content.js` đã commit sẵn.
 
 ---
 
 ## Cập nhật nội dung
 
-Tài liệu Markdown ở gốc repo là **nguồn sự thật duy nhất**. Sau khi sửa nó:
+Giữ file tài liệu Markdown gốc ở gốc dự án **trên máy bạn** (nó bị `.gitignore`
+bỏ qua nên không lên repo). Sau khi sửa nó:
 
 ```bash
 npm install      # chỉ cần lần đầu
 npm run build    # sinh lại assets/data/content.js
 ```
 
-Rồi commit & push — GitHub Pages tự cập nhật.
+Rồi commit & push **`content.js`** — GitHub Pages tự cập nhật. (Deploy dùng thẳng
+`content.js`, không build lại từ Markdown, nên tài liệu gốc không cần có trên repo.)
 
 Sửa **bài tập / quiz / lộ trình** thì chỉnh trực tiếp `assets/data/learning.js`.
 

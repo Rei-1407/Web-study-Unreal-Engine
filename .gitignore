@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Tài liệu nguồn giữ riêng trên máy, KHÔNG đưa lên repo công khai
+Unreal_Engine_5_6_Tai_lieu_tham_chieu_Game_3D_v2.md
 .DS_Store
 Thumbs.db
 *.log
