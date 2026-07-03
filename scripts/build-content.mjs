@@ -148,6 +148,40 @@ function render(mdArrOrStr) {
   return marked.parse(md.trim());
 }
 
+// Làm sạch text trong ô bảng (bỏ định dạng markdown) để làm nội dung thẻ ôn tập.
+function cleanCell(s) {
+  return s
+    .replace(/`/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Trích bảng markdown ĐẦU TIÊN trong một mảng dòng → { headers, rows }.
+function parseTable(mdLines) {
+  for (let i = 0; i < mdLines.length - 1; i++) {
+    const head = mdLines[i].trim();
+    const sep = (mdLines[i + 1] || "").trim();
+    const isRow = head.startsWith("|");
+    const isSep = /^\|?[\s:|-]*-[\s:|-]*\|?$/.test(sep) && sep.includes("-");
+    if (isRow && isSep) {
+      const cells = (line) =>
+        line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => cleanCell(c));
+      const headers = cells(head);
+      const rows = [];
+      for (let j = i + 2; j < mdLines.length; j++) {
+        const ln = mdLines[j].trim();
+        if (!ln.startsWith("|")) break;
+        const r = cells(ln);
+        if (r.some((c) => c.length)) rows.push(r);
+      }
+      return { headers, rows };
+    }
+  }
+  return null;
+}
+
 // Dựng đối tượng đầu ra
 const outGroups = groups.map((g) => ({
   letter: g.letter,
@@ -168,6 +202,7 @@ const outAppendix = appendix.map((a) => ({
   title: a.title,
   slug: a.slug,
   html: render(a._md),
+  table: parseTable(a._md), // {headers, rows} hoặc null — dùng cho thẻ ôn tập
 }));
 
 const lessonCount = outGroups.reduce((n, g) => n + g.lessons.length, 0);

@@ -15,6 +15,120 @@
   const lessonByNum = {};
   LESSONS.forEach((l) => (lessonByNum[l.num] = l));
 
+  // ─────────────────────── KHO THẺ ÔN TẬP (SRS) ───────────────────────
+  // Dựng từ các bảng trong Phụ lục + bộ câu hỏi ôn tập. Không tạo nội dung mới.
+  function buildDecks() {
+    const decks = [];
+    (C.appendix || []).forEach((a) => {
+      if (!a.table || !a.table.rows.length) return;
+      let cfg = null;
+      if (/thuật ngữ|glossary/i.test(a.title))
+        cfg = { id: "gloss", name: "Thuật ngữ (Glossary)", icon: "📖", frontCol: 0, backCol: 1, prompt: "Thuật ngữ này nghĩa là gì?", mc: true, mcReverse: true, backMono: false, mcOptionMono: false };
+      else if (/đặt tên|naming/i.test(a.title))
+        cfg = { id: "naming", name: "Quy ước đặt tên", icon: "🏷️", frontCol: 1, backCol: 0, prompt: "Tiền tố đặt tên đúng là gì?", mc: true, mcReverse: false, backMono: true, mcOptionMono: true };
+      else if (/console|command/i.test(a.title))
+        cfg = { id: "cmd", name: "Console / stat commands", icon: "⌨️", frontCol: 1, backCol: 0, prompt: "Dùng lệnh nào để làm việc này?", mc: true, mcReverse: false, backMono: true, mcOptionMono: true };
+      else if (/phím tắt/i.test(a.title))
+        cfg = { id: "keys", name: "Phím tắt Editor", icon: "🎹", frontCol: 1, backCol: 0, prompt: "Phím tắt nào?", mc: true, mcReverse: false, backMono: true, mcOptionMono: true };
+      if (!cfg) return;
+      cfg.cards = a.table.rows
+        .filter((r) => (r[cfg.frontCol] || "").trim() && (r[cfg.backCol] || "").trim())
+        .map((r, i) => ({ id: cfg.id + ":" + i, deck: cfg.id, front: r[cfg.frontCol], back: r[cfg.backCol], prompt: cfg.prompt, backMono: cfg.backMono }));
+      decks.push(cfg);
+    });
+    // Bộ câu hỏi ôn tập (chỉ lật thẻ, không trắc nghiệm vì đáp án dài)
+    decks.push({
+      id: "quiz", name: "Câu hỏi ôn tập", icon: "🧠", mc: false,
+      cards: L.quiz.map((q, i) => ({ id: "quiz:" + i, deck: "quiz", front: q.q, back: q.a, prompt: "Trả lời câu hỏi:", lesson: q.lesson })),
+    });
+    return decks;
+  }
+  const DECKS = buildDecks();
+  const deckById = {};
+  const ALL_CARDS = [];
+  const cardById = {};
+  DECKS.forEach((d) => { deckById[d.id] = d; d.cards.forEach((c) => { ALL_CARDS.push(c); cardById[c.id] = c; }); });
+
+  const SRS_INTERVALS = [0, 1, 2, 4, 7, 14, 30, 60]; // ngày theo box; box>=5 coi như "đã thuộc"
+  const NEW_PER_DAY = 15;
+  const MASTER_BOX = 5;
+
+  function addDays(dateStr, n) {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+    return arr;
+  }
+  function resetNewCounter() {
+    const t = todayStr();
+    if (S.srs.newTodayDate !== t) { S.srs.newTodayDate = t; S.srs.newToday = 0; }
+  }
+  function srsStats(deckFilter) {
+    resetNewCounter();
+    const t = todayStr();
+    const pool = ALL_CARDS.filter((c) => !deckFilter || deckFilter.indexOf(c.deck) >= 0);
+    let seen = 0, dueSeen = 0, mastered = 0, newUnseen = 0;
+    pool.forEach((c) => {
+      const s = S.srs.cards[c.id];
+      if (s) { seen++; if (s.due <= t) dueSeen++; if (s.box >= MASTER_BOX) mastered++; }
+      else newUnseen++;
+    });
+    const newAvail = deckFilter
+      ? Math.min(newUnseen, Math.max(0, NEW_PER_DAY - S.srs.newToday))
+      : Math.min(newUnseen, Math.max(0, NEW_PER_DAY - S.srs.newToday));
+    return { total: pool.length, seen, dueSeen, mastered, newUnseen, newAvail, due: dueSeen + newAvail };
+  }
+  function buildSessionCards(deckFilter, limit) {
+    resetNewCounter();
+    const t = todayStr();
+    const pool = ALL_CARDS.filter((c) => !deckFilter || deckFilter.indexOf(c.deck) >= 0);
+    const due = shuffle(pool.filter((c) => { const s = S.srs.cards[c.id]; return s && s.due <= t; }));
+    const remainingNew = Math.max(0, NEW_PER_DAY - S.srs.newToday);
+    const news = shuffle(pool.filter((c) => !S.srs.cards[c.id])).slice(0, remainingNew);
+    let list = due.concat(news);
+    if (limit && list.length > limit) list = list.slice(0, limit);
+    return shuffle(list);
+  }
+  function markPracticeDay() {
+    const t = todayStr();
+    if (S.srs.lastPracticeDay === t) return;
+    if (S.srs.lastPracticeDay) {
+      const d = daysBetween(S.srs.lastPracticeDay, t);
+      S.srs.dailyStreak = d === 1 ? S.srs.dailyStreak + 1 : 1;
+    } else S.srs.dailyStreak = 1;
+    S.srs.lastPracticeDay = t;
+  }
+  // grade: 'again' | 'good' | 'easy' → trả về XP thưởng
+  function gradeCard(id, grade) {
+    resetNewCounter();
+    const t = todayStr();
+    let s = S.srs.cards[id];
+    if (!s) { s = { box: 0, due: t, reps: 0, lapses: 0 }; S.srs.cards[id] = s; S.srs.newToday++; }
+    if (grade === "again") { s.box = 1; s.lapses++; s.due = t; }
+    else if (grade === "good") { s.box = Math.min(Math.max(s.box + 1, 1), SRS_INTERVALS.length - 1); s.due = addDays(t, SRS_INTERVALS[s.box]); }
+    else if (grade === "easy") { s.box = Math.min(Math.max(s.box + 2, 2), SRS_INTERVALS.length - 1); s.due = addDays(t, SRS_INTERVALS[s.box]); }
+    s.reps++;
+    S.srs.history[t] = (S.srs.history[t] || 0) + 1;
+    markPracticeDay();
+    const gained = grade === "easy" ? 8 : grade === "good" ? 6 : 2;
+    addXp(gained);
+    return gained;
+  }
+  function masteredCount() { return ALL_CARDS.filter((c) => { const s = S.srs.cards[c.id]; return s && s.box >= MASTER_BOX; }).length; }
+  // Sinh dữ liệu trắc nghiệm cho một thẻ
+  function makeMC(card) {
+    const deck = deckById[card.deck];
+    const reverse = !!deck.mcReverse;
+    const stem = reverse ? card.back : card.front;
+    const correct = reverse ? card.front : card.back;
+    const poolVals = deck.cards.map((c) => (reverse ? c.front : c.back)).filter((v) => v && v !== correct);
+    const uniq = shuffle([...new Set(poolVals)]).slice(0, 3);
+    return { stem, correct, options: shuffle([correct, ...uniq]), mono: !!deck.mcOptionMono };
+  }
+
   // ─────────────────────────── STATE ───────────────────────────
   const PKEY = "ue_study_progress_v1";
   const defaultState = {
@@ -31,15 +145,28 @@
     achievements: {},   // {id: true}
     theme: "dark",
     collapsedGroups: {},
+    srs: {              // spaced repetition (luyện tập hàng ngày)
+      cards: {},        // cardId -> {box, due:"YYYY-MM-DD", reps, lapses}
+      dailyStreak: 0,
+      lastPracticeDay: null,
+      newToday: 0,
+      newTodayDate: null,
+      history: {},      // "YYYY-MM-DD" -> số thẻ đã ôn
+    },
   };
   let S = load();
 
   function load() {
+    const base = JSON.parse(JSON.stringify(defaultState));
     try {
       const raw = localStorage.getItem(PKEY);
-      if (raw) return Object.assign({}, defaultState, JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        Object.assign(base, parsed);
+        base.srs = Object.assign(JSON.parse(JSON.stringify(defaultState.srs)), parsed.srs || {});
+      }
     } catch (e) {}
-    return JSON.parse(JSON.stringify(defaultState));
+    return base;
   }
   function save() {
     try { localStorage.setItem(PKEY, JSON.stringify(S)); } catch (e) {}
@@ -90,6 +217,10 @@
     { id: "allEx", ico: "⚙️", name: "Cày hết bài tập", test: () => L.exercises.every((e) => exDone(e) === exTotal(e)) },
     { id: "quizAll", ico: "🧠", name: "Ôn tập kỹ", test: () => L.quiz.every((_, i) => S.quiz[i] === "known") },
     { id: "capstone", ico: "🏆", name: "Về đích Capstone", test: () => L.capstone.tasks.every((_, i) => S.capTasks[i]) },
+    { id: "srsStart", ico: "📅", name: "Luyện tập lần đầu", test: () => Object.keys(S.srs.cards).length >= 1 },
+    { id: "srs7", ico: "📆", name: "Ôn 7 ngày liền", test: () => S.srs.dailyStreak >= 7 },
+    { id: "master30", ico: "💎", name: "Thuộc 30 thẻ", test: () => masteredCount() >= 30 },
+    { id: "masterAll", ico: "👑", name: "Thuộc trọn tài liệu", test: () => ALL_CARDS.length > 0 && masteredCount() >= ALL_CARDS.length },
   ];
   function checkAchievements() {
     const newly = [];
@@ -176,6 +307,7 @@
   // ─────────────────────────── SIDEBAR ───────────────────────────
   const PRIMARY = [
     { hash: "#/", ico: "🏠", label: "Bảng điều khiển" },
+    { hash: "#/practice", ico: "📅", label: "Luyện tập hàng ngày" },
     { hash: "#/roadmap", ico: "🗺️", label: "Lộ trình học" },
     { hash: "#/exercises", ico: "🎯", label: "Bài tập thực hành" },
     { hash: "#/quiz", ico: "🧠", label: "Ôn tập (Quiz)" },
@@ -243,6 +375,16 @@
     const nextUndone = LESSONS.find((l) => !S.completed[l.num]);
     const cta = nextUndone || resume;
 
+    const sps = srsStats(null);
+    const practiceBanner = `<a href="#/practice" class="practice-banner ${sps.due > 0 ? "active" : "calm"}">
+      <span class="pb-ico">${sps.due > 0 ? "📅" : "✅"}</span>
+      <div class="pb-text">
+        <strong>${sps.due > 0 ? "Có " + sps.due + " thẻ cần ôn hôm nay" : "Hôm nay đã ôn xong!"}</strong>
+        <small>Luyện tập hàng ngày · 🔥 chuỗi ${S.srs.dailyStreak} ngày · ${sps.mastered}/${sps.total} thẻ đã thuộc</small>
+      </div>
+      <span class="pb-cta">${sps.due > 0 ? "Ôn ngay →" : "Ôn thêm →"}</span>
+    </a>`;
+
     const circ = 2 * Math.PI * 58;
     const dash = circ * (pct / 100);
 
@@ -289,6 +431,8 @@
         </div>
       </div>
 
+      ${practiceBanner}
+
       <div class="stat-grid">
         <div class="stat"><div class="stat-ico">📖</div><div class="stat-val">${done}<span style="font-size:15px;color:var(--text-faint)">/${LESSONS.length}</span></div><div class="stat-lbl">Bài học hoàn thành</div></div>
         <div class="stat"><div class="stat-ico">🎯</div><div class="stat-val">${exDoneCount}<span style="font-size:15px;color:var(--text-faint)">/${exTotalCount}</span></div><div class="stat-lbl">Đầu việc bài tập</div></div>
@@ -333,32 +477,58 @@
     const isDone = !!S.completed[num];
     const isMarked = !!S.bookmarks[num];
 
+    // thời gian đọc ước lượng
+    const words = (l.text || "").split(/\s+/).filter(Boolean).length;
+    const mins = Math.max(1, Math.round(words / 170));
+
+    // nhóm hiện tại + các bài trong nhóm
+    const group = C.groups.find((g) => g.letter === l.groupLetter);
+    const gDone = group.lessons.filter((x) => S.completed[x.num]).length;
+    const gPct = Math.round((gDone / group.lessons.length) * 100);
+    const siblings = group.lessons.map((x) => `<a href="#/lesson/${x.num}" class="rail-lesson ${x.num === num ? "current" : ""} ${S.completed[x.num] ? "done" : ""}">
+        <span class="rl-check">${S.completed[x.num] ? "✓" : x.num}</span>
+        <span class="rl-title">${esc(x.title)}</span></a>`).join("");
+
     // bài tập liên quan (theo nhóm)
     const relEx = L.exercises.find((e) => e.groupLetter === l.groupLetter);
-    const relHtml = relEx ? `<div class="related-box">
-      <span class="rb-ico">🎯</span>
-      <div style="flex:1"><strong>Có bài tập cho nhóm này</strong><small>${esc(relEx.title)} — ${relEx.difficulty} · ${relEx.time}</small></div>
-      <a href="#/exercises#ex-${relEx.module}" class="btn btn-primary">Làm bài tập</a></div>` : "";
+    const relHtml = relEx ? `<div class="rail-card rail-ex">
+        <div class="rail-ex-head"><span>🎯</span> Bài tập cho nhóm này</div>
+        <div class="rail-ex-name">${esc(relEx.title)}</div>
+        <div class="rail-ex-meta">${esc(relEx.difficulty)} · ${esc(relEx.time)}</div>
+        <a href="#/exercises#ex-${relEx.module}" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:10px">Làm bài tập →</a>
+      </div>` : "";
 
-    view.innerHTML = `<div class="page lesson-layout">
-      <div class="lesson-top">
-        <span class="lesson-groupbadge">NHÓM ${l.groupLetter} · ${esc(l.groupName)}</span>
+    view.innerHTML = `<div class="page reading-page">
+      <div class="lesson-wrap">
+        <div class="lesson-main">
+          <div class="crumb"><a href="#/">Trang chủ</a> <span>›</span> <span>NHÓM ${l.groupLetter} · ${esc(l.groupName)}</span></div>
+          <h1 class="lesson-title-main">${l.num}. ${esc(l.title)}</h1>
+          <div class="lesson-subline">Bài ${idx + 1}/${LESSONS.length} · ⏱ ~${mins} phút đọc${isDone ? ' · <span style="color:var(--success)">✓ Đã hoàn thành</span>' : ""}</div>
+
+          <article class="reading">${l.html}</article>
+
+          <nav class="lesson-nav">
+            ${prev ? `<a href="#/lesson/${prev.num}" class="prev"><span class="ln-dir">← Bài trước</span><span class="ln-title">${prev.num}. ${esc(prev.title)}</span></a>` : `<a class="prev disabled"><span class="ln-dir">← Bài trước</span><span class="ln-title">—</span></a>`}
+            ${next ? `<a href="#/lesson/${next.num}" class="next"><span class="ln-dir">Bài tiếp →</span><span class="ln-title">${next.num}. ${esc(next.title)}</span></a>` : `<a class="next disabled"><span class="ln-dir">Bài tiếp →</span><span class="ln-title">—</span></a>`}
+          </nav>
+        </div>
+
+        <aside class="lesson-rail">
+          <div class="rail-card">
+            <button class="btn ${isDone ? "btn-success" : "btn-primary"}" id="markBtn" style="width:100%;justify-content:center">${isDone ? "✓ Đã hoàn thành" : "Đánh dấu hoàn thành"}</button>
+            <button class="btn btn-ghost" id="bmBtn" style="width:100%;justify-content:center;margin-top:8px">${isMarked ? "★ Đã lưu" : "☆ Lưu bài"}</button>
+          </div>
+          ${relHtml}
+          <div class="rail-card">
+            <div class="rail-head">
+              <span>NHÓM ${l.groupLetter}</span>
+              <span class="rail-head-pct">${gDone}/${group.lessons.length}</span>
+            </div>
+            <div class="rail-groupbar"><span style="width:${gPct}%"></span></div>
+            <div class="rail-lessons">${siblings}</div>
+          </div>
+        </aside>
       </div>
-      <h1 class="lesson-title-main">${l.num}. ${esc(l.title)}</h1>
-      <div class="lesson-actions">
-        <button class="btn ${isDone ? "btn-success" : "btn-primary"}" id="markBtn">${isDone ? "✓ Đã hoàn thành" : "Đánh dấu hoàn thành"}</button>
-        <button class="btn btn-ghost" id="bmBtn">${isMarked ? "★ Đã lưu" : "☆ Lưu bài"}</button>
-        <span style="margin-left:auto;color:var(--text-faint);font-size:13px">Bài ${idx + 1}/${LESSONS.length}</span>
-      </div>
-
-      <article class="reading">${l.html}</article>
-
-      ${relHtml}
-
-      <nav class="lesson-nav">
-        ${prev ? `<a href="#/lesson/${prev.num}" class="prev"><span class="ln-dir">← Bài trước</span><span class="ln-title">${prev.num}. ${esc(prev.title)}</span></a>` : `<a class="prev disabled"><span class="ln-dir">← Bài trước</span><span class="ln-title">—</span></a>`}
-        ${next ? `<a href="#/lesson/${next.num}" class="next"><span class="ln-dir">Bài tiếp →</span><span class="ln-title">${next.num}. ${esc(next.title)}</span></a>` : `<a class="next disabled"><span class="ln-dir">Bài tiếp →</span><span class="ln-title">—</span></a>`}
-      </nav>
     </div>`;
 
     document.getElementById("markBtn").addEventListener("click", () => toggleLesson(num));
@@ -578,7 +748,7 @@
   // ---------- STATUS (mục 34) ----------
   function renderStatus() {
     const lesson = lessonByNum[34];
-    view.innerHTML = `<div class="page">
+    view.innerHTML = `<div class="page narrow-page">
       <div class="page-head">
         <div class="eyebrow" style="color:var(--danger)">⚠️ Đọc bắt buộc trước khi đưa tính năng vào dự án</div>
         <h1>Trạng thái tính năng: Experimental / Beta / Production</h1>
@@ -621,7 +791,7 @@
 
   // ---------- REFERENCES ----------
   function renderReferences() {
-    view.innerHTML = `<div class="page">
+    view.innerHTML = `<div class="page narrow-page">
       <div class="page-head"><div class="eyebrow">Tài liệu gốc</div><h1>Nguồn tham khảo & Changelog</h1></div>
       <article class="reading card">${C.references}</article>
       <h2 class="section-title" style="margin-top:24px">Changelog tài liệu</h2>
@@ -629,12 +799,226 @@
     </div>`;
   }
 
+  // ---------- LUYỆN TẬP HÀNG NGÀY (SRS) ----------
+  let session = null; // {queue:[card], current, format, flipped, answered, picked, mc, stats:{reviewed,correct,xp}}
+
+  function renderPractice() {
+    if (session) { renderSession(); return; }
+    const st = srsStats(null);
+    const pct = st.total ? Math.round((st.mastered / st.total) * 100) : 0;
+
+    const deckRows = DECKS.map((d) => {
+      const ds = srsStats([d.id]);
+      const dp = ds.total ? Math.round((ds.mastered / ds.total) * 100) : 0;
+      return `<div class="deck-row" data-deck="${d.id}">
+        <div class="deck-ico">${d.icon || "🃏"}</div>
+        <div class="deck-info">
+          <strong>${esc(d.name)}</strong>
+          <small>${ds.total} thẻ · ${ds.mastered} đã thuộc · <span style="color:var(--warn)">${ds.due} đến hạn</span></small>
+          <div class="deck-bar"><span style="width:${dp}%"></span></div>
+        </div>
+        <button class="btn btn-ghost deck-start" data-deck="${d.id}" ${ds.due === 0 ? "disabled" : ""}>Ôn bộ này</button>
+      </div>`;
+    }).join("");
+
+    // dải lịch 14 ngày gần nhất
+    let heat = "";
+    for (let i = 13; i >= 0; i--) {
+      const day = addDays(todayStr(), -i);
+      const n = S.srs.history[day] || 0;
+      const lvl = n === 0 ? 0 : n < 10 ? 1 : n < 25 ? 2 : n < 50 ? 3 : 4;
+      heat += `<span class="heat heat-${lvl}" title="${day}: ${n} thẻ"></span>`;
+    }
+
+    view.innerHTML = `<div class="page">
+      <div class="page-head">
+        <div class="eyebrow">Lặp lại ngắt quãng · nhớ lâu</div>
+        <h1>Luyện tập hàng ngày</h1>
+        <p class="lead">Mỗi ngày ôn lại những thẻ "đến hạn". Thẻ nào bạn nhớ sẽ được giãn ra xa hơn, thẻ nào quên sẽ quay lại sớm — cứ đều đặn là thuộc dần cả tài liệu.</p>
+      </div>
+
+      <div class="practice-hero">
+        <div class="ph-left">
+          <div class="ph-due">${st.due}</div>
+          <div class="ph-due-lbl">thẻ cần ôn hôm nay</div>
+          <button class="btn btn-primary btn-lg" id="startAll" ${st.due === 0 ? "disabled" : ""} style="margin-top:16px">
+            ${st.due === 0 ? "✅ Hôm nay đã xong!" : "▶ Bắt đầu ôn (" + st.due + " thẻ)"}
+          </button>
+          ${st.due === 0 ? `<div class="ph-note">Quay lại ngày mai, hoặc mở một bộ thẻ bên dưới để ôn thêm.</div>` : ""}
+        </div>
+        <div class="ph-right">
+          <div class="ph-stat"><div class="v">🔥 ${S.srs.dailyStreak}</div><div class="l">Chuỗi luyện tập</div></div>
+          <div class="ph-stat"><div class="v">${st.mastered}<span class="s">/${st.total}</span></div><div class="l">Thẻ đã thuộc</div></div>
+          <div class="ph-stat"><div class="v">${pct}%</div><div class="l">Thuộc tài liệu</div></div>
+        </div>
+      </div>
+
+      <div class="heat-wrap">
+        <span class="heat-lbl">14 ngày gần đây</span>
+        <div class="heat-row">${heat}</div>
+        <span class="heat-lgd">ít <span class="heat heat-0"></span><span class="heat heat-1"></span><span class="heat heat-2"></span><span class="heat heat-3"></span><span class="heat heat-4"></span> nhiều</span>
+      </div>
+
+      <h2 class="section-title" style="margin-top:28px">🃏 Các bộ thẻ (${ALL_CARDS.length} thẻ, xào từ tài liệu)</h2>
+      <div class="deck-list">${deckRows}</div>
+
+      <div class="srs-explain">
+        <span style="font-size:20px">💡</span>
+        <div><b>Cách hoạt động:</b> với thẻ lật, tự nhớ đáp án rồi bấm <b>Quên / Nhớ / Dễ</b> để hệ thống xếp lịch ôn lại. Có cả câu <b>trắc nghiệm</b> trộn vào cho đỡ nhàm. Mục tiêu: đưa mọi thẻ vào trạng thái "đã thuộc" 👑.</div>
+      </div>
+    </div>`;
+
+    const start = (filter) => { startSession(filter); };
+    const btnAll = document.getElementById("startAll");
+    if (btnAll) btnAll.addEventListener("click", () => start(null));
+    view.querySelectorAll(".deck-start").forEach((b) =>
+      b.addEventListener("click", (e) => { e.stopPropagation(); if (!b.disabled) start([b.getAttribute("data-deck")]); }));
+  }
+
+  function startSession(filter) {
+    const cards = buildSessionCards(filter, 40);
+    if (!cards.length) { toast("Không còn thẻ đến hạn cho bộ này 🎉", "📅"); return; }
+    session = { queue: cards, current: null, format: "recall", flipped: false, answered: false, picked: null, mc: null, filter: filter, stats: { reviewed: 0, correct: 0, xp: 0 }, finished: false };
+    advanceSession();
+    renderSession();
+  }
+  function advanceSession() {
+    if (!session.queue.length) { session.finished = true; return; }
+    const card = session.queue.shift();
+    session.current = card;
+    session.flipped = false;
+    session.answered = false;
+    session.picked = null;
+    const deck = deckById[card.deck];
+    const useMc = deck.mc && card.deck !== "quiz" && Math.random() < 0.5;
+    session.format = useMc ? "mc" : "recall";
+    session.mc = useMc ? makeMC(card) : null;
+  }
+  function endSessionCleanup() { session = null; renderSidebar(); updateTopbar(); }
+
+  function renderSession() {
+    if (session.finished) { renderSessionResult(); return; }
+    const card = session.current;
+    const deck = deckById[card.deck];
+    const totalPlanned = session.stats.reviewed + session.queue.length + 1;
+    const prog = Math.round((session.stats.reviewed / Math.max(1, totalPlanned)) * 100);
+
+    let body;
+    if (session.format === "mc") {
+      const mc = session.mc;
+      const opts = mc.options.map((o, i) => {
+        let cls = "mc-opt";
+        if (session.answered) {
+          if (o === mc.correct) cls += " correct";
+          else if (o === session.picked) cls += " wrong";
+          else cls += " dim";
+        }
+        return `<button class="${cls}" data-opt="${i}" ${session.answered ? "disabled" : ""}>
+          <span class="mc-key">${i + 1}</span><span class="${mc.mono ? "mono" : ""}">${esc(o)}</span></button>`;
+      }).join("");
+      body = `<div class="sess-prompt">${esc(card.prompt || "Chọn đáp án đúng")}</div>
+        <div class="sess-stem ${deck.mcReverse ? "" : ""}">${esc(mc.stem)}</div>
+        <div class="mc-grid">${opts}</div>
+        ${session.answered ? `<div class="sess-feedback ${session.picked === mc.correct ? "ok" : "no"}">${session.picked === mc.correct ? "✓ Chính xác!" : "✗ Đáp án đúng: <b>" + esc(mc.correct) + "</b>"}</div>
+          <div class="sess-actions"><button class="btn btn-primary" id="mcNext">Tiếp tục →</button></div>` : ""}`;
+    } else {
+      body = `<div class="sess-prompt">${esc(card.prompt || "")}</div>
+        <div class="sess-stem">${esc(card.front)}</div>
+        ${session.flipped
+          ? `<div class="sess-answer ${card.backMono ? "mono" : ""}">${esc(card.back)}</div>
+             ${card.lesson ? `<div style="margin-top:12px"><a href="#/lesson/${card.lesson}" class="chip">📖 Xem lại bài ${card.lesson}</a></div>` : ""}
+             <div class="grade-row">
+               <button class="btn grade" data-g="again" style="border-color:var(--danger);color:var(--danger)">Quên <small>(1)</small></button>
+               <button class="btn grade" data-g="good" style="border-color:var(--accent);color:var(--accent)">Nhớ <small>(2)</small></button>
+               <button class="btn grade" data-g="easy" style="border-color:var(--success);color:var(--success)">Dễ <small>(3)</small></button>
+             </div>`
+          : `<div class="sess-actions"><button class="btn btn-primary btn-lg" id="revealBtn">Hiện đáp án <small>(Space)</small></button></div>`}`;
+    }
+
+    view.innerHTML = `<div class="page">
+      <div class="sess-top">
+        <button class="btn btn-ghost" id="exitSess">✕ Thoát</button>
+        <div class="sess-progress"><span style="width:${prog}%"></span></div>
+        <div class="sess-count">${session.stats.reviewed} đã ôn · còn ${session.queue.length + (session.finished ? 0 : 1)}</div>
+      </div>
+      <div class="sess-deckname">${deck.icon || "🃏"} ${esc(deck.name)}</div>
+      <div class="sess-card">${body}</div>
+    </div>`;
+
+    document.getElementById("exitSess").addEventListener("click", () => { location.hash = "#/practice"; endSessionCleanup(); renderPractice(); });
+    const rb = document.getElementById("revealBtn");
+    if (rb) rb.addEventListener("click", () => { session.flipped = true; renderSession(); });
+    view.querySelectorAll(".grade").forEach((b) =>
+      b.addEventListener("click", () => doGrade(b.getAttribute("data-g"))));
+    view.querySelectorAll(".mc-opt").forEach((b) =>
+      b.addEventListener("click", () => pickMc(+b.getAttribute("data-opt"))));
+    const mn = document.getElementById("mcNext");
+    if (mn) mn.addEventListener("click", () => { advanceSession(); renderSession(); });
+  }
+
+  function pickMc(i) {
+    if (session.answered) return;
+    const mc = session.mc;
+    session.picked = mc.options[i];
+    session.answered = true;
+    const correct = session.picked === mc.correct;
+    const g = correct ? "good" : "again";
+    const xp = gradeCard(session.current.id, g);
+    session.stats.reviewed++;
+    session.stats.xp += xp;
+    if (correct) session.stats.correct++;
+    else session.queue.splice(Math.min(session.queue.length, 4), 0, session.current); // học lại sớm
+    save(); checkAchievements(); updateTopbar();
+    renderSession();
+  }
+  function doGrade(g) {
+    const xp = gradeCard(session.current.id, g);
+    session.stats.reviewed++;
+    session.stats.xp += xp;
+    if (g !== "again") session.stats.correct++;
+    else session.queue.splice(Math.min(session.queue.length, 4), 0, session.current);
+    save(); checkAchievements(); updateTopbar();
+    advanceSession();
+    renderSession();
+  }
+
+  function renderSessionResult() {
+    const s = session.stats;
+    const acc = s.reviewed ? Math.round((s.correct / s.reviewed) * 100) : 0;
+    const st = srsStats(null);
+    const filter = session.filter;
+    session = null;
+    renderSidebar(); updateTopbar();
+    view.innerHTML = `<div class="page">
+      <div class="result-card">
+        <div class="result-emoji">${acc >= 80 ? "🎉" : acc >= 50 ? "👍" : "💪"}</div>
+        <h1>Xong phiên ôn tập!</h1>
+        <p class="lead" style="margin:0 auto">Đều đặn mỗi ngày là chìa khóa để nhớ lâu.</p>
+        <div class="result-stats">
+          <div class="rs"><div class="v">${s.reviewed}</div><div class="l">Thẻ đã ôn</div></div>
+          <div class="rs"><div class="v" style="color:var(--success)">${acc}%</div><div class="l">Đúng ngay</div></div>
+          <div class="rs"><div class="v" style="color:var(--accent)">+${s.xp}</div><div class="l">XP nhận</div></div>
+          <div class="rs"><div class="v">🔥 ${S.srs.dailyStreak}</div><div class="l">Chuỗi ngày</div></div>
+        </div>
+        <div class="result-actions">
+          ${st.due > 0 ? `<button class="btn btn-primary btn-lg" id="againBtn">Ôn tiếp (${st.due} thẻ) →</button>` : `<div class="ph-note" style="margin-bottom:8px">✅ Bạn đã ôn hết thẻ đến hạn hôm nay. Tuyệt vời!</div>`}
+          <a href="#/practice" class="btn btn-lg">Về trang luyện tập</a>
+          <a href="#/" class="btn btn-lg btn-ghost">Bảng điều khiển</a>
+        </div>
+      </div>
+    </div>`;
+    const ab = document.getElementById("againBtn");
+    if (ab) ab.addEventListener("click", () => startSession(filter));
+  }
+
   // ══════════════════════════ ROUTER ══════════════════════════
   function route(silent) {
     const hash = location.hash || "#/";
     const parts = hash.replace(/^#\//, "").split("#")[0].split("/");
     const head = parts[0];
+    if (head !== "practice" && session && !session.finished) session = null; // rời phiên khi đổi route
     if (head === "lesson") renderLesson(parseInt(parts[1], 10));
+    else if (head === "practice") renderPractice();
     else if (head === "roadmap") renderRoadmap();
     else if (head === "exercises") renderExercises();
     else if (head === "quiz") renderQuiz();
@@ -774,6 +1158,23 @@
   // Ctrl+K focus search
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchInput.focus(); searchInput.select(); }
+  });
+
+  // Phím tắt khi đang trong phiên luyện tập
+  document.addEventListener("keydown", (e) => {
+    if (!session || session.finished) return;
+    if (document.activeElement === searchInput) return;
+    if (session.format === "recall") {
+      if (!session.flipped && (e.code === "Space" || e.key === "Enter")) { e.preventDefault(); session.flipped = true; renderSession(); }
+      else if (session.flipped) {
+        if (e.key === "1") doGrade("again");
+        else if (e.key === "2") doGrade("good");
+        else if (e.key === "3") doGrade("easy");
+      }
+    } else if (session.format === "mc") {
+      if (!session.answered && ["1", "2", "3", "4"].includes(e.key)) pickMc(+e.key - 1);
+      else if (session.answered && (e.code === "Space" || e.key === "Enter")) { e.preventDefault(); advanceSession(); renderSession(); }
+    }
   });
 
   // ══════════════════════════ INIT ══════════════════════════
