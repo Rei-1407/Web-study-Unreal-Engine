@@ -1,72 +1,28 @@
-# UE Học Tập — Web học Unreal Engine 5.6
+# 🎮 UE Học Tập — Unreal Engine 5.6
 
-Hệ thống web học & luyện tập **Unreal Engine 5.6** dùng nội bộ, dựng từ tài liệu
-tham chiếu chuẩn. Mục tiêu: học có lộ trình, thực hành nhiều, và **thành thạo**
-cách dùng Unreal Engine.
+Hệ thống web học &amp; luyện tập **Unreal Engine 5.6**: học có lộ trình, thực hành nhiều, hướng tới **thành thạo** công cụ làm game 3D.
 
-🔗 **Truy cập online:** https://rei-1407.github.io/Web-study-Unreal-Engine/
+🔗 **Bản demo:** https://rei-1407.github.io/Web-study-Unreal-Engine/
 
 ---
 
-## Tính năng
+## ✨ Tính năng
 
-- **Bảng điều khiển (Dashboard)** tạo động lực: vòng tiến độ, XP/level, chuỗi ngày
-  học (streak), huy hiệu (achievements), tóm tắt TL;DR.
-- **40 bài học** chia theo 10 nhóm A–J, đánh dấu hoàn thành, lưu bài, điều hướng
-  trước/sau, link tự động tới bài tập liên quan.
-- **Lộ trình học 3 giai đoạn** + phân module theo vai trò (Programmer, Artist,
-  Tech Artist, Designer, Cinematic).
-- **Bài tập thực hành** dạng checklist tương tác (tick từng đầu việc), kèm phần
-  "nộp bài" và **Capstone** với rubric nghiệm thu.
-- **Ôn tập (Flashcards)**: 12 câu hỏi lật thẻ, đánh dấu "đã thuộc / cần ôn lại".
-- **Trạng thái tính năng** (Experimental/Beta/Production) — trang đọc bắt buộc.
-- **Tra cứu nhanh**: phím tắt, naming convention, console commands, checklist
-  project mới, glossary Anh–Việt.
-- **Tìm kiếm toàn cục** (Ctrl+K), **theme sáng/tối**, lưu tiến độ trong trình duyệt.
+- **Bảng điều khiển (Dashboard)** tạo động lực: vòng tiến độ, XP/level, chuỗi ngày học (streak), huy hiệu (achievements), tóm tắt TL;DR.
+- **Bài học theo nhóm**, đánh dấu hoàn thành, lưu bài, điều hướng trước/sau, link tự động tới bài tập liên quan.
+- **Lộ trình học 3 giai đoạn** + phân module theo vai trò (Programmer, Artist, Tech Artist, Designer, Cinematic).
+- **Bài tập thực hành** dạng checklist tương tác, kèm phần "nộp bài" và **Capstone** có rubric nghiệm thu.
+- **Ôn tập (Flashcards)** — lật thẻ, đánh dấu "đã thuộc / cần ôn lại".
+- **Tra cứu nhanh:** phím tắt, naming convention, console commands, checklist project mới, glossary Anh–Việt.
+- **Tìm kiếm toàn cục** (Ctrl+K), **giao diện sáng/tối**, lưu tiến độ ngay trên trình duyệt.
 
-> Tiến độ được lưu bằng `localStorage` của trình duyệt (theo từng máy/trình duyệt).
+## 🛠 Công nghệ
 
----
+Web tĩnh thuần: HTML + CSS + JavaScript. Không framework.
 
-## Cấu trúc dự án
+## 🚀 Chạy thử tại máy
 
-```
-(Unreal_Engine_5_6_..._v2.md)    ← Tài liệu gốc — GIỮ RIÊNG TRÊN MÁY, không đưa lên repo
-scripts/build-content.mjs        ← Sinh nội dung bài học từ Markdown (chạy ở máy)
-assets/
-  css/style.css                  ← Giao diện
-  js/app.js                      ← Toàn bộ logic (router, tiến độ, gamification)
-  data/content.js                ← Nội dung bài học (sinh từ tài liệu; commit sẵn)
-  data/learning.js               ← Bài tập, quiz, lộ trình (viết tay)
-index.html                       ← Trang chính
-```
-
-> Tài liệu Markdown gốc **cố ý không nằm trong repo** (để không ai tải/clone bản
-> gốc). Nội dung web nằm trong `assets/data/content.js` đã commit sẵn.
-
----
-
-## Cập nhật nội dung
-
-Giữ file tài liệu Markdown gốc ở gốc dự án **trên máy bạn** (nó bị `.gitignore`
-bỏ qua nên không lên repo). Sau khi sửa nó:
-
-```bash
-npm install      # chỉ cần lần đầu
-npm run build    # sinh lại assets/data/content.js
-```
-
-Rồi commit & push **`content.js`** — GitHub Pages tự cập nhật. (Deploy dùng thẳng
-`content.js`, không build lại từ Markdown, nên tài liệu gốc không cần có trên repo.)
-
-Sửa **bài tập / quiz / lộ trình** thì chỉnh trực tiếp `assets/data/learning.js`.
-
----
-
-## Chạy thử tại máy
-
-Vì trang nạp dữ liệu qua thẻ `<script>` nên **mở trực tiếp `index.html` cũng chạy**.
-Hoặc chạy một server tĩnh cho giống môi trường thật:
+Mở trực tiếp `index.html` cũng chạy, hoặc chạy một static server cho giống môi trường thật:
 
 ```bash
 npm run serve    # http://localhost:5173
@@ -74,7 +30,4 @@ npm run serve    # http://localhost:5173
 
 ---
 
-## Deploy
-
-Đã cấu hình **GitHub Pages** phục vụ từ nhánh `main` (thư mục gốc). Mỗi lần
-`git push` lên `main`, trang sẽ tự build lại sau ~1 phút.
+<p align="center"><sub>Sản phẩm của <strong>ReiX&nbsp;Labs</strong> · © 2026 ReiX Labs</sub></p>
